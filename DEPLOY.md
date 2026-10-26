@@ -62,7 +62,7 @@ Staff open the same `https://….vercel.app` address on their phones and sign in
 ## Good to know
 
 - **Internet is required.** The online app can't record sales when the shop's internet is down. A phone hotspot is a good backup. The local version (`python3 server.py`) still works offline.
-- **Vercel plan:** Vercel's free Hobby plan is for personal, non-commercial use. A business should use **Vercel Pro**. Turso's free plan is plenty for one shop.
+- **Cost:** for a personal, non-commercial project like this, Vercel's free **Hobby** plan and Turso's free plan are all you need.
 - **Speed:** each screen makes several database calls. With Vercel and Turso both in Mumbai this stays quick. If you pick other regions, keep the two in the same place. The Vercel region is the `regions` setting in `vercel.json`.
 - **Trying the demo data online:** make a second Turso database for testing. Never load demo data into your real one.
 
