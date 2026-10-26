@@ -1,0 +1,79 @@
+# Garment Shop Manager
+
+Inventory, sales, profit and capital tracking for an offline garment shop in India.
+It runs on the shop's own computer and opens in any browser on a laptop, desktop or phone.
+
+- **No installation:** it needs only Python 3.9 or newer (already on macOS and most Linux systems; on Windows, install it from python.org).
+- **One data file:** everything is stored in a SQLite database, `data/shop.db`.
+- **Amounts and dates:** rupees with Indian digit grouping (₹12,34,567.00) and DD-MM-YYYY dates.
+
+## Start
+
+```bash
+python3 server.py
+```
+
+Then open http://127.0.0.1:8000.
+
+Staff can use phones on the shop Wi-Fi. Start with `--lan`, then open the "Phones" address it prints:
+
+```bash
+python3 server.py --lan
+```
+
+Shortcuts: on macOS double-click `start.command`; on Windows double-click `start.bat`.
+
+The first time it opens, the owner creates their account. The setup wizard then asks for:
+
+1. Shop name, costing method (weighted average or FIFO), GST defaults and the start date
+2. Opening cash and bank balances, capital invested before the app, initial investment and loans
+3. Suppliers, with any amount you already owe them
+4. Opening stock: the quantity on hand and what each unit actually cost
+5. Credit customers, with any amount they already owe you
+
+You can change any of these later under Settings → Opening balances & setup.
+
+## What it does
+
+| Area | What it covers |
+|---|---|
+| Purchases | Supplier bills with many lines. Total = Qty × price + additional costs − discount. Freight and discounts are spread across the lines, so every unit carries its landed cost. Duplicate supplier invoice numbers are blocked. |
+| Products | Simple designs, or variants by size, colour and design (with a variant generator). Each variant has its own SKU, stock level and prices. |
+| Inventory | Live stock and value at cost, by category and by supplier. Low-stock and out-of-stock lists, fast and slow movers, a stock-movement summary, a per-SKU ledger, and damage or stock-count corrections. |
+| Sales | Multi-line invoices. **Sales channel (Retail / Wholesale) must be chosen on every invoice and is never set from the date.** Discounts, GST (inclusive or exclusive), part payments, credit customers, returns (restocked or damaged), voids and printing. |
+| Profit | Net Sales = Gross − Discounts − Returns. Gross Profit = Net Sales − COGS. Net Operating Profit = Gross Profit − Expenses − stock write-offs. Shown by product, category, channel and month. |
+| COGS | Uses the actual landed cost of the units sold: weighted average by default, FIFO optional. Unsold stock stays in inventory value. Back-dated entries and voids recalculate automatically. |
+| Capital & cash | Initial, additional and partner capital, withdrawals, loans, GST payments and cash↔bank transfers. Cash and bank balances come from every transaction, and a balance sheet check shows that the books reconcile. |
+| Expenses | Rent, salaries, electricity and so on, with monthly and category breakdowns. |
+| Dashboard | 16 KPI cards and 7 charts with date, channel, category, supplier and product filters. Every card and chart links through to the underlying records. |
+| Reports | 12 reports, each downloadable as Excel (.xlsx) or CSV, plus a single workbook with all of them. |
+| Staff | Owner and Staff roles with per-permission control. Staff never see cost, profit or capital unless allowed, and cannot void finalised entries without permission. |
+| Safety | Hashed passwords, login lockout, HttpOnly session cookies, CSRF checks, an audit log of every change, and duplicate-submit protection. Finalised transactions are voided with a reason, never deleted. |
+
+## Backups
+
+Settings → Shop & accounting → **Download backup** saves a complete copy of the database. Keep copies off the computer, on a pen drive or in cloud storage.
+
+To restore: stop the app, replace `data/shop.db` with the backup file, and start the app again.
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+The tests check purchase totals, landed-cost allocation, WAC and FIFO COGS, back-dated recalculation, returns, damage write-offs, voids, credit balances, the explicit-channel rule, permissions, the balance-sheet reconciliation and the Excel/CSV exports. All test data lives in temporary databases.
+
+## Layout
+
+```
+server.py          HTTP server (Python standard library only)
+shop/db.py         schema (suppliers, products, variants, purchases, sales, payments,
+                   returns, expenses, inventory movements, capital, audit log)
+shop/ledger.py     inventory costing engine (WAC / FIFO replay)
+shop/services.py   validated entry for every transaction type
+shop/metrics.py    revenue, profit, inventory, capital and dashboard maths
+shop/reports.py    report definitions; shop/xlsx.py writes Excel and CSV
+static/            browser app (plain JavaScript, no build step)
+tests/             unit and HTTP tests
+```
