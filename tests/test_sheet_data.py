@@ -99,6 +99,11 @@ class DashboardTests(unittest.TestCase):
         sid, url = SD.sheet_csv_url("https://docs.google.com/spreadsheets/d/1UaY1bIbfIcz0-0INwhkyTeaPEbjUp2GCnZkcb_i6djc/edit#gid=123")
         self.assertEqual(sid, "1UaY1bIbfIcz0-0INwhkyTeaPEbjUp2GCnZkcb_i6djc")
         self.assertTrue(url.endswith("export?format=csv&gid=123"))
+        # no gid → first tab, without guessing gid=0
+        _, url = SD.sheet_csv_url("1UaY1bIbfIcz0-0INwhkyTeaPEbjUp2GCnZkcb_i6djc")
+        self.assertTrue(url.endswith("/export?format=csv"))
+        _, url = SD.sheet_csv_url("1UaY1bIbfIcz0-0INwhkyTeaPEbjUp2GCnZkcb_i6djc", "")
+        self.assertTrue(url.endswith("/export?format=csv"))
         with self.assertRaises(ValueError):
             SD.sheet_csv_url("not a sheet")
 

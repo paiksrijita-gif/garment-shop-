@@ -66,10 +66,15 @@ def sheet_csv_url(value, gid=None):
     sheet_id = m.group(1) if m else value
     if not re.fullmatch(r"[A-Za-z0-9_-]{20,}", sheet_id or ""):
         raise ValueError("GOOGLE_SHEET_ID is not a valid Google Sheets ID or link")
-    if gid is None:
+    if not gid:
         g = re.search(r"[#&?]gid=(\d+)", value)
-        gid = g.group(1) if g else "0"
-    return sheet_id, "https://docs.google.com/spreadsheets/d/%s/export?format=csv&gid=%s" % (sheet_id, gid)
+        gid = g.group(1) if g else None
+    url = "https://docs.google.com/spreadsheets/d/%s/export?format=csv" % sheet_id
+    # Without a gid Google exports the first tab. Don't assume gid=0: a sheet
+    # created by uploading a file gets a different gid, and gid=0 then fails (400).
+    if gid:
+        url += "&gid=%s" % gid
+    return sheet_id, url
 
 
 def fetch_csv(url, timeout=20):
