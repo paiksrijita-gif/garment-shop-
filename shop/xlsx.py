@@ -87,15 +87,18 @@ def _cell(ref, value, kind, style=None):
         ref, sid, escape(text))
 
 
-def _sheet(title, subtitle, columns, data, totals):
+def _sheet(title, subtitle, columns, data, totals, plain=False):
+    """plain=True writes a data tab: headers in row 1, no title, with
+    drop-down validation for columns that have a list of choices."""
     out = []
     r = 1
-    out.append('<row r="%d">%s</row>' % (r, _cell("A%d" % r, title, "text", "title")))
-    r += 1
-    if subtitle:
-        out.append('<row r="%d">%s</row>' % (r, _cell("A%d" % r, subtitle, "text")))
+    if not plain:
+        out.append('<row r="%d">%s</row>' % (r, _cell("A%d" % r, title, "text", "title")))
         r += 1
-    r += 1
+        if subtitle:
+            out.append('<row r="%d">%s</row>' % (r, _cell("A%d" % r, subtitle, "text")))
+            r += 1
+        r += 1
     header_row = r
     out.append('<row r="%d">%s</row>' % (r, "".join(
         _cell("%s%d" % (_col(i), r), c[1], "text", "header") for i, c in enumerate(columns))))
@@ -121,12 +124,20 @@ def _sheet(title, subtitle, columns, data, totals):
         return max(10, min(45, longest + 2))
     widths = "".join('<col min="%d" max="%d" width="%d" customWidth="1"/>' % (i + 1, i + 1, width(c))
                      for i, c in enumerate(columns))
+    validations = ""
+    lists = [(i, c[3]) for i, c in enumerate(columns) if len(c) > 3 and c[3]]
+    if plain and lists:
+        validations = '<dataValidations count="%d">%s</dataValidations>' % (len(lists), "".join(
+            '<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="%s2:%s5000">'
+            '<formula1>"%s"</formula1></dataValidation>' % (_col(i), _col(i), escape(",".join(ch)))
+            for i, ch in lists))
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
         '<sheetViews><sheetView workbookViewId="0"><pane ySplit="%d" topLeftCell="A%d" activePane="bottomLeft" '
         'state="frozen"/></sheetView></sheetViews>'
-        '<cols>%s</cols><sheetData>%s</sheetData></worksheet>' % (header_row, header_row + 1, widths, "".join(out))
+        '<cols>%s</cols><sheetData>%s</sheetData>%s</worksheet>' % (
+            header_row, header_row + 1, widths, "".join(out), validations)
     )
 
 
@@ -170,7 +181,8 @@ def build_xlsx(sheets):
         z.writestr("xl/styles.xml", _styles())
         for i, s in enumerate(sheets):
             z.writestr("xl/worksheets/sheet%d.xml" % (i + 1),
-                       _sheet(s["title"], s.get("subtitle"), s["columns"], s["rows"], s.get("totals")))
+                       _sheet(s["title"], s.get("subtitle"), s["columns"], s["rows"], s.get("totals"),
+                              s.get("plain", False)))
     return buf.getvalue()
 
 

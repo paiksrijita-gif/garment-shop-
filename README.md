@@ -33,6 +33,28 @@ The first time it opens, the owner creates their account. The setup wizard then 
 
 You can change any of these later under Settings → Opening balances & setup.
 
+## Try it with demo data
+
+```bash
+python3 tools/seed_demo.py
+python3 server.py --db data/demo.db --port 8001
+```
+
+On macOS you can double-click `start-demo.command` instead. Then open http://127.0.0.1:8001.
+
+This builds `data/demo.db`: six months of fictional activity for "DEMO Sample Garments". It includes 6 suppliers, 16 products (76 SKUs), opening stock, purchases, retail and wholesale sales on every day of the week, credit customers, returns, damage, expenses, capital, a loan and GST payments. The owner and staff demo logins are listed at the top of `tools/seed_demo.py`.
+
+The demo database is separate from your real `data/shop.db`, and the script refuses to write into `shop.db`. To rebuild it from scratch, run `python3 tools/seed_demo.py --force`.
+
+## Google Sheets layout
+
+`docs/google-sheets-structure.md` describes the planned Google Sheet: one tab per table and every column. Two files go with it:
+
+- `docs/google-sheets-template.xlsx`: empty tabs with headers and drop-downs.
+- `docs/google-sheets-demo.xlsx`: the same tabs filled with the demo data.
+
+To use either one, open Google Sheets and choose File → Import → Upload → Replace spreadsheet. To regenerate the files, run `python3 tools/export_sheets.py --db data/demo.db`.
+
 ## What it does
 
 | Area | What it covers |
@@ -74,6 +96,9 @@ shop/ledger.py     inventory costing engine (WAC / FIFO replay)
 shop/services.py   validated entry for every transaction type
 shop/metrics.py    revenue, profit, inventory, capital and dashboard maths
 shop/reports.py    report definitions; shop/xlsx.py writes Excel and CSV
+shop/sheets_schema.py  Google Sheets layout (one tab per table)
+tools/             demo data generator, Google Sheets export
+docs/              Google Sheets structure, template and demo workbook
 static/            browser app (plain JavaScript, no build step)
 tests/             unit and HTTP tests
 ```
