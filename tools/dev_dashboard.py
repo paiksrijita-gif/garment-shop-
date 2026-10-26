@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Run the Google Sheet dashboard locally, the way Vercel serves it.
 
-    python3 tools/dev_dashboard.py                      # sample data from sheet/garment-shop-database.csv
-    GOOGLE_SHEET_ID=<id or link> python3 tools/dev_dashboard.py   # your real Google Sheet
+    python3 tools/dev_dashboard.py
+Uses GOOGLE_SHEET_ID from .env (your real sheet) when present, otherwise the
+sample data in sheet/garment-shop-database.csv.
 """
 import os
 import subprocess
@@ -11,6 +12,21 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+
+
+def load_dotenv(path):
+    """Read KEY=value lines from .env (the same lines you paste into Vercel)."""
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+load_dotenv(os.path.join(ROOT, ".env"))
 if not os.environ.get("GOOGLE_SHEET_ID"):
     os.environ.setdefault("SHEET_CSV_FILE", os.path.join(ROOT, "sheet", "garment-shop-database.csv"))
 

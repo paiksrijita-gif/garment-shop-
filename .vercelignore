@@ -9,3 +9,5 @@ site/
 start.command
 start.bat
 start-demo.command
+.env
+.env.example

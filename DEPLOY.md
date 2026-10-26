@@ -20,11 +20,11 @@ GitHub repo: https://github.com/paiksrijita-gif/garment-shop-
 
 1. Go to https://vercel.com/new and import the **`garment-shop-`** repository.
 2. **Framework Preset:** `Other`. Leave the build settings as they are; `vercel.json` already sets them.
-3. Under **Environment Variables**, add one:
+3. Open **Environment Variables**. Copy everything in the project's `.env` file and paste it into the **Key** box; Vercel splits the pasted lines into separate variables by itself. The file is on your computer only, not on GitHub. If you don't have it, copy `.env.example` to `.env` and put your sheet link after `GOOGLE_SHEET_ID=`. It holds one variable:
 
    | Name | Value |
    |---|---|
-   | `GOOGLE_SHEET_ID` | the sheet link you copied in Step 1 |
+   | `GOOGLE_SHEET_ID` | the sheet's ID or the link you copied in Step 1 |
 
 4. Click **Deploy**, then open the `https://….vercel.app` address when it finishes.
 
@@ -76,5 +76,5 @@ When the sheet was created, cells K1, L1 and M1 came out as `#NAME?`. The dashbo
 
 - **Who can see it:** anyone who has the website address or the sheet link can see the shop's numbers. Share them only with people you trust.
 - **Cost:** Vercel's free Hobby plan is enough for this personal project.
-- **Trying it on your computer:** `python3 tools/dev_dashboard.py` opens the dashboard at http://127.0.0.1:8002 using the sample data. To read your real sheet instead, run `GOOGLE_SHEET_ID=<sheet link> python3 tools/dev_dashboard.py`.
+- **Trying it on your computer:** `python3 tools/dev_dashboard.py` opens the dashboard at http://127.0.0.1:8002. It reads your sheet using the ID in `.env`; without a `.env`, it shows the sample data.
 - **The full shop app** (purchases, sales, returns, staff logins) still runs on your computer with `python3 server.py`. It keeps its own database and does not read the Google Sheet.
