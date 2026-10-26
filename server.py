@@ -17,7 +17,7 @@ import sys
 import traceback
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qsl, quote, urlencode
+from urllib.parse import urlparse, parse_qsl, quote
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
@@ -62,12 +62,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def _dispatch(self, method):
         url = urlparse(self.path)
-        query = parse_qsl(url.query)
-        # On Vercel, /api/* is rewritten to /api/index?__path=*; restore the original path.
-        rewritten = [v for k, v in query if k == "__path"]
-        if rewritten:
-            url = url._replace(path="/api/" + rewritten[0].lstrip("/"),
-                               query=urlencode([(k, v) for k, v in query if k != "__path"]))
         if not url.path.startswith("/api/"):
             if method != "GET":
                 return self._send_json(405, {"error": "Method not allowed"})

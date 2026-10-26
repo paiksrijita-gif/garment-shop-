@@ -160,7 +160,7 @@ def put_settings(c):
 @route("GET", "/api/backup")
 def backup(c):
     """Complete copy of the database as a SQLite file (owner only). Works for
-    both the local file and a remote Turso database."""
+    any SQLite connection."""
     require(c.user, "owner")
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

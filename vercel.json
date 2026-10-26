@@ -1,14 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "outputDirectory": "static",
+  "buildCommand": "sh build-site.sh",
+  "outputDirectory": "site",
   "regions": ["bom1"],
   "functions": {
-    "api/index.py": { "maxDuration": 30 }
+    "api/sheet.py": { "maxDuration": 30 }
   },
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index?__path=:path*" }
-  ],
   "headers": [
     {
       "source": "/(.*)",

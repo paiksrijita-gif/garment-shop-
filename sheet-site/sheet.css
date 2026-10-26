@@ -1,0 +1,13 @@
+.sheet-main { max-width: 1280px; margin: 0 auto; padding: 22px 24px 60px; }
+.sheet-head .brand-mark { width: 38px; height: 38px; border-radius: 10px; }
+.sheet-head .brand-mark svg { width: 22px; height: 22px; }
+.updated { font-size: .82rem; color: var(--muted); }
+th.sort { cursor: pointer; user-select: none; }
+th.sort:hover { color: var(--ink); }
+th.sort.on { color: var(--accent-ink); }
+.issues summary { cursor: pointer; font-weight: 600; }
+.issues ul { margin: 8px 0 0; padding-left: 20px; font-size: .86rem; }
+@media (max-width: 860px) {
+  .sheet-main { padding: 16px 16px 40px; }
+}
+.sheet-main td { white-space: nowrap; }

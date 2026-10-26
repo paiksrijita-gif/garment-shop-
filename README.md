@@ -33,9 +33,16 @@ The first time it opens, the owner creates their account. The setup wizard then 
 
 You can change any of these later under Settings → Opening balances & setup.
 
-## Put it online (Vercel)
+## Google Sheet dashboard (online, on Vercel)
 
-The app can also run on Vercel with a free Turso database. [DEPLOY.md](DEPLOY.md) has the step-by-step guide. Locally, nothing changes: it still uses `data/shop.db`.
+A simpler online version keeps the data in one Google Sheet that you edit by hand, and shows the metrics on a website hosted on Vercel. See [DEPLOY.md](DEPLOY.md) for setup and the sheet's columns.
+
+- `sheet/garment-shop-database.csv`: the sample data the Google Sheet started with.
+- `shop/sheet_data.py`: reads the sheet and works out the metrics.
+- `api/sheet.py`: the Vercel function that serves them.
+- `sheet-site/`: the dashboard page.
+
+To try it on your computer, run `python3 tools/dev_dashboard.py`.
 
 ## Try it with demo data
 
@@ -94,9 +101,8 @@ The tests check purchase totals, landed-cost allocation, WAC and FIFO COGS, back
 
 ```
 server.py          HTTP server (Python standard library only)
-api/index.py       Vercel entry point (same server, Turso database)
-vercel.json        Vercel routing, region and security headers
-shop/remote.py     Turso / libSQL connection (standard library only)
+api/sheet.py       Vercel function for the Google Sheet dashboard
+vercel.json        Vercel build, region and security headers
 shop/db.py         schema (suppliers, products, variants, purchases, sales, payments,
                    returns, expenses, inventory movements, capital, audit log)
 shop/ledger.py     inventory costing engine (WAC / FIFO replay)

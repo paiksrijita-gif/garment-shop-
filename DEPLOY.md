@@ -1,79 +1,80 @@
-# Deploying to Vercel
+# Google Sheet dashboard on Vercel
 
-On Vercel, the app runs online. Your data is kept in a free **Turso** database, because Vercel cannot keep files between requests. The app needs no packages; Vercel only runs `api/index.py` and serves the `static/` folder.
+Your data lives in one Google Sheet that you edit by hand. The website on Vercel reads that sheet and shows the metrics. There is no other database, no login and nothing to install.
 
-You need three free accounts: **GitHub**, **Turso** and **Vercel**. Sign in to all three with GitHub to keep things simple.
+Google Sheet: **Garment Shop Database** (in your Google Drive)
+GitHub repo: https://github.com/paiksrijita-gif/garment-shop-
 
 ---
 
-## Step 1 — Put the code on GitHub
+## Step 1 — Let the website read the sheet
 
-1. Go to https://github.com/new.
-2. **Repository name:** `garment-shop`. Select **Private**.
-3. Leave "Add a README", ".gitignore" and "license" **unticked**. The project already has these files.
-4. Click **Create repository**, then copy the HTTPS address. It looks like `https://github.com/<you>/garment-shop.git`.
-5. Push the code. Either give the address to Claude, or run these two lines in Terminal:
+1. Open the **Garment Shop Database** sheet.
+2. Click **Share**. Under **General access**, choose **Anyone with the link**, set the role to **Viewer**, and click **Done**.
+3. *(Recommended)* Go to **File → Settings → Locale** and choose **India**, so dates show as DD/MM/YYYY.
+4. Copy the sheet's address from the browser bar. It looks like `https://docs.google.com/spreadsheets/d/1UaY…/edit`.
 
-   ```bash
-   git -C ~/Documents/garment-shop remote add origin https://github.com/<you>/garment-shop.git
-   git -C ~/Documents/garment-shop push -u origin main
-   ```
+"Viewer" means people who have the link can see the data but cannot change it. Only you can edit the sheet.
 
-   If Terminal asks for a password, GitHub needs a **personal access token**, not your password. Create one at GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate, with the `repo` scope. Paste it when asked for the password.
+## Step 2 — Deploy on Vercel
 
-Your real data (`data/`) never goes to GitHub. It is listed in `.gitignore`.
-
-## Step 2 — Create the database on Turso
-
-1. Go to https://app.turso.tech and sign up with GitHub.
-2. Click **Create Database**:
-   - **Name:** `garment-shop`
-   - **Location:** **Mumbai (aws-ap-south-1)**. This matches the Vercel region the app is set to (`bom1`), which keeps it fast.
-3. Open the database and copy its **URL**. It looks like `libsql://garment-shop-<you>.turso.io`.
-4. Click **Create Token**. Choose **Read & Write** and **no expiry**, then copy the token. Keep it secret; anyone with it can read your shop data.
-
-You don't need to create any tables. The app creates them the first time it starts.
-
-## Step 3 — Deploy on Vercel
-
-1. Go to https://vercel.com/new and import the `garment-shop` repository. Allow Vercel to access it if asked.
-2. **Framework Preset:** `Other`. Leave the build and output settings as they are; `vercel.json` already sets them.
-3. Open **Environment Variables** and add three:
+1. Go to https://vercel.com/new and import the **`garment-shop-`** repository.
+2. **Framework Preset:** `Other`. Leave the build settings as they are; `vercel.json` already sets them.
+3. Under **Environment Variables**, add one:
 
    | Name | Value |
    |---|---|
-   | `TURSO_DATABASE_URL` | the `libsql://…` URL from Step 2 |
-   | `TURSO_AUTH_TOKEN` | the token from Step 2 |
-   | `GS_SETUP_KEY` | a long secret phrase you make up, e.g. `lakshmi-shop-setup-7291-blue` |
+   | `GOOGLE_SHEET_ID` | the sheet link you copied in Step 1 |
 
 4. Click **Deploy**, then open the `https://….vercel.app` address when it finishes.
-5. The first screen asks for the **Setup key**. Type your `GS_SETUP_KEY`, then create the owner account. Only someone who knows this key can create the owner account, so a stranger who finds the site can't take it over.
-6. Go through the setup wizard: opening cash and bank, suppliers, opening stock and customers. Then add staff under **Settings → Staff & permissions**.
 
-Staff open the same `https://….vercel.app` address on their phones and sign in with their own accounts.
+If the page says *Cannot load the Google Sheet*, check Step 1.2 (sharing) and the `GOOGLE_SHEET_ID` value. After changing the value, redeploy: Deployments → ⋯ → Redeploy.
 
-## After it is live
+## Step 3 — Keep the sheet up to date
 
-- **Updates:** every `git push` to `main` redeploys automatically.
-- **Backups:** use **Settings → Download backup** regularly. Turso also keeps a point-in-time history of the database.
-- **Changing a variable:** after you edit an environment variable in Vercel, redeploy (Deployments → ⋯ → Redeploy) so the change takes effect.
-- **If the site shows "Database not configured" or "Cannot open the database":** check the two `TURSO_…` variables, then redeploy.
+Row 1 holds the column headers; don't rename or remove them. Each row below is one stock entry:
+
+| Column | What to type |
+|---|---|
+| Date of Entry | Date the stock came in, e.g. `27/10/2026` |
+| Product ID | Your code for the item, e.g. `KUR-001` (required) |
+| Product Category | e.g. Women, Men, Kids |
+| Product Type | e.g. Kurti, Saree, Jeans |
+| Sizes | e.g. `S, M, L, XL` or `Free Size` |
+| Seller | Who you bought it from |
+| Cost | Cost **per unit** in ₹ (numbers only) |
+| Total Units | Units received |
+| Selling Price | Selling price **per unit** in ₹ |
+| Units Sold | Update this as items sell |
+| Units available, Revenue, Profit | Worked out automatically — leave them alone |
+
+How the numbers are worked out:
+- **Units available** = Total Units − Units Sold
+- **Revenue** = Units Sold × Selling Price
+- **Profit** = Units Sold × (Selling Price − Cost). Unsold stock is not counted as a loss; it stays as stock at cost.
+
+The website always calculates these three columns itself, so they are right on the dashboard even if the sheet's own formula cells show an error.
+
+After you edit the sheet, press **Refresh** on the dashboard. Without that, changes appear within about 15 seconds.
+
+**Before you enter real data,** delete the 24 sample rows. Their seller names end in "(sample)".
+
+**If a row is wrong** (missing Product ID, text in a number column, more units sold than stocked), the dashboard lists it under *rows in the sheet need attention* and leaves the rest working.
+
+### Fixing the three formula columns in the sheet (optional)
+
+When the sheet was created, cells K1, L1 and M1 came out as `#NAME?`. The dashboard doesn't need them. If you want the columns filled in the sheet as well:
+
+1. Type the headers `Units available`, `Revenue` and `Profit` into K1, L1 and M1.
+2. Type these formulas into row 2:
+   - K2: `=IF(B2="","",H2-J2)`
+   - L2: `=IF(B2="","",J2*I2)`
+   - M2: `=IF(B2="","",J2*(I2-G2))`
+3. Select K2:M2 and drag the small square at the corner down as far as you need.
 
 ## Good to know
 
-- **Internet is required.** The online app can't record sales when the shop's internet is down. A phone hotspot is a good backup. The local version (`python3 server.py`) still works offline.
-- **Cost:** for a personal, non-commercial project like this, Vercel's free **Hobby** plan and Turso's free plan are all you need.
-- **Speed:** each screen makes several database calls. With Vercel and Turso both in Mumbai this stays quick. If you pick other regions, keep the two in the same place. The Vercel region is the `regions` setting in `vercel.json`.
-- **Trying the demo data online:** make a second Turso database for testing. Never load demo data into your real one.
-
-## Moving existing local data to Turso (optional)
-
-If you already entered real data in the local app (`data/shop.db`), copy it into the new database **before** you open the Vercel site for the first time. Install the Turso CLI from https://docs.turso.tech/cli/installation, then run:
-
-```bash
-turso auth login
-sqlite3 ~/Documents/garment-shop/data/shop.db .dump > shop-dump.sql
-turso db shell garment-shop < shop-dump.sql
-```
-
-Then deploy. Your owner login, staff and every transaction come across as they are, so there is no setup key step.
+- **Who can see it:** anyone who has the website address or the sheet link can see the shop's numbers. Share them only with people you trust.
+- **Cost:** Vercel's free Hobby plan is enough for this personal project.
+- **Trying it on your computer:** `python3 tools/dev_dashboard.py` opens the dashboard at http://127.0.0.1:8002 using the sample data. To read your real sheet instead, run `GOOGLE_SHEET_ID=<sheet link> python3 tools/dev_dashboard.py`.
+- **The full shop app** (purchases, sales, returns, staff logins) still runs on your computer with `python3 server.py`. It keeps its own database and does not read the Google Sheet.

@@ -2,6 +2,7 @@ data/
 docs/
 tests/
 tools/
+site/
 *.db
 *.db-wal
 *.db-shm
