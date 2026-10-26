@@ -1,0 +1,10 @@
+data/
+docs/
+tests/
+tools/
+*.db
+*.db-wal
+*.db-shm
+start.command
+start.bat
+start-demo.command

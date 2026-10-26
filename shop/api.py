@@ -1,8 +1,12 @@
 """HTTP routes. Each handler gets a Ctx and returns JSON-able data or a
 (bytes, content_type, filename) tuple for downloads."""
+import hmac
+import os
 import re
+import sqlite3
+import tempfile
 
-from . import auth, metrics, reports, services as S, xlsx
+from . import auth, db, metrics, reports, services as S, xlsx
 from .auth import require, can
 from .db import rows, get_setting
 from .util import ApiError, bad, v_date, today
@@ -62,10 +66,15 @@ def filters(q):
 # --------------------------------------------------------------------------
 # auth & setup
 
+def _setup_key():
+    return os.environ.get("GS_SETUP_KEY", "")
+
+
 @route("GET", "/api/status")
 def status(c):
     return {
         "needs_owner": not auth.has_users(c.conn),
+        "setup_key_required": bool(_setup_key()),
         "user": auth.public_user(c.user) if c.user else None,
         "shop_name": get_setting(c.conn, "shop_name"),
         "today": today(),
@@ -74,6 +83,10 @@ def status(c):
 
 @route("POST", "/api/setup/owner")
 def setup_owner(c):
+    # On a public deployment, only someone who knows GS_SETUP_KEY can claim the owner account.
+    key = _setup_key()
+    if key and not hmac.compare_digest(str(c.body.get("setup_key") or ""), key):
+        raise ApiError(403, "Setup key is incorrect", "setup_key")
     user = auth.create_owner(c.conn, c.body)
     token, user = auth.login(c.conn, user["username"], c.body.get("password"))
     c.set_cookie = token
@@ -146,16 +159,22 @@ def put_settings(c):
 
 @route("GET", "/api/backup")
 def backup(c):
-    """Consistent copy of the whole database (owner only)."""
+    """Complete copy of the database as a SQLite file (owner only). Works for
+    both the local file and a remote Turso database."""
     require(c.user, "owner")
-    import os
-    import sqlite3
-    import tempfile
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     try:
         dest = sqlite3.connect(path)
-        c.conn.backup(dest)
+        dest.executescript(db.SCHEMA)
+        tables = [r[0] for r in dest.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT IN ('sessions', 'sqlite_sequence')")]
+        for t in tables:
+            cols = [r[1] for r in dest.execute("PRAGMA table_info(%s)" % t)]
+            data = [tuple(r) for r in c.conn.execute("SELECT %s FROM %s" % (", ".join(cols), t))]
+            if data:
+                dest.executemany("INSERT INTO %s (%s) VALUES (%s)" % (t, ", ".join(cols), ", ".join("?" * len(cols))), data)
+        dest.commit()
         dest.close()
         with open(path, "rb") as fh:
             data = fh.read()

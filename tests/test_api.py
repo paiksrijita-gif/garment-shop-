@@ -39,12 +39,16 @@ class ApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        path = os.path.join(cls.tmp.name, "api.db")
+        path = cls.db_target() or os.path.join(cls.tmp.name, "api.db")
         db.init_db(path).close()
-        server.Handler.db_path = path
-        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        handler = type("TestHandler", (server.Handler,), {"db_path": path})
+        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
         cls.base = "http://127.0.0.1:%d" % cls.httpd.server_address[1]
+
+    @classmethod
+    def db_target(cls):
+        return None
 
     @classmethod
     def tearDownClass(cls):

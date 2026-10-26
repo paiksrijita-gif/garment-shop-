@@ -17,7 +17,7 @@ import sys
 import traceback
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qsl, quote
+from urllib.parse import urlparse, parse_qsl, quote, urlencode
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
@@ -62,6 +62,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _dispatch(self, method):
         url = urlparse(self.path)
+        query = parse_qsl(url.query)
+        # On Vercel, /api/* is rewritten to /api/index?__path=*; restore the original path.
+        rewritten = [v for k, v in query if k == "__path"]
+        if rewritten:
+            url = url._replace(path="/api/" + rewritten[0].lstrip("/"),
+                               query=urlencode([(k, v) for k, v in query if k != "__path"]))
         if not url.path.startswith("/api/"):
             if method != "GET":
                 return self._send_json(405, {"error": "Method not allowed"})
@@ -138,10 +144,11 @@ class Handler(BaseHTTPRequestHandler):
         return c[COOKIE].value if COOKIE in c else None
 
     def _cookie_header(self, token):
+        secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
         if not token:
-            return "%s=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0" % COOKIE
-        return "%s=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=%d" % (
-            COOKIE, token, auth.SESSION_DAYS * 86400)
+            return "%s=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0%s" % (COOKIE, secure)
+        return "%s=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=%d%s" % (
+            COOKIE, token, auth.SESSION_DAYS * 86400, secure)
 
     def _send_json(self, status, payload, headers=None):
         data = json.dumps(payload, default=str).encode()

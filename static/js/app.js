@@ -64,7 +64,7 @@ async function boot() {
   }
   state.today = st.today;
   state.shopName = st.shop_name;
-  if (st.needs_owner) return ownerSetup();
+  if (st.needs_owner) return ownerSetup(st.setup_key_required);
   if (!st.user) return loginView();
   state.user = st.user;
   await loadRefs();
@@ -110,7 +110,8 @@ function loginView() {
   u.focus();
 }
 
-function ownerSetup() {
+function ownerSetup(keyRequired) {
+  const key = keyRequired ? input('setup_key', { type: 'password', autocomplete: 'off' }) : null;
   const shop = input('shop_name', { placeholder: 'e.g. Lakshmi Garments' });
   const name = input('full_name', { autocomplete: 'name' });
   const u = input('username', { autocomplete: 'username', autocapitalize: 'none' });
@@ -122,7 +123,7 @@ function ownerSetup() {
     if (p.value !== p2.value) return showError(form, { field: 'password2', message: 'Passwords do not match' });
     await busy(btn, async () => {
       try {
-        const r = await api.post('/api/setup/owner', { shop_name: shop.value, full_name: name.value, username: u.value, password: p.value });
+        const r = await api.post('/api/setup/owner', { shop_name: shop.value, full_name: name.value, username: u.value, password: p.value, setup_key: key ? key.value : '' });
         state.user = r.user;
         await loadRefs();
         location.hash = '#/setup';
@@ -131,6 +132,7 @@ function ownerSetup() {
       } catch (ex) { showError(form, ex); }
     });
   } },
+  key ? field('Setup key', key, { required: true, hint: 'The GS_SETUP_KEY value you set in Vercel' }) : null,
   field('Shop name', shop, { required: true }), field('Your name', name, { required: true }),
   field('Username', u, { required: true, hint: 'Letters and numbers, used to sign in' }),
   field('Password', p, { required: true, hint: 'At least 8 characters' }), field('Confirm password', p2, { required: true }), btn);

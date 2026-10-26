@@ -1,4 +1,5 @@
 """SQLite schema, connections and transaction helpers."""
+import os
 import sqlite3
 from contextlib import contextmanager
 
@@ -384,17 +385,29 @@ DEFAULT_EXPENSE_CATEGORIES = [
 ]
 
 
-def connect(path):
-    conn = sqlite3.connect(path, timeout=15, isolation_level=None, check_same_thread=False)
+def is_remote(target):
+    return isinstance(target, str) and target.startswith(("libsql://", "https://", "http://"))
+
+
+def connect(target):
+    """Open the database: a local SQLite file path, or a Turso / libSQL URL
+    (token from TURSO_AUTH_TOKEN) when the app runs on a host such as Vercel."""
+    if is_remote(target):
+        from .remote import Connection
+        conn = Connection(target, os.environ.get("TURSO_AUTH_TOKEN"))
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+    conn = sqlite3.connect(target, timeout=15, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 15000")
     return conn
 
 
-def init_db(path):
-    conn = connect(path)
-    conn.execute("PRAGMA journal_mode = WAL")
+def init_db(target):
+    conn = connect(target)
+    if not is_remote(target):
+        conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA)
     with tx(conn):
         for k, v in DEFAULT_SETTINGS.items():
@@ -415,7 +428,7 @@ def tx(conn):
     if conn.in_transaction:
         yield conn
         return
-    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("BEGIN IMMEDIATE")  # take the write lock up front
     try:
         yield conn
     except BaseException:

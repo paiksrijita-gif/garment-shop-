@@ -33,6 +33,10 @@ The first time it opens, the owner creates their account. The setup wizard then 
 
 You can change any of these later under Settings → Opening balances & setup.
 
+## Put it online (Vercel)
+
+The app can also run on Vercel with a free Turso database. [DEPLOY.md](DEPLOY.md) has the step-by-step guide. Locally, nothing changes: it still uses `data/shop.db`.
+
 ## Try it with demo data
 
 ```bash
@@ -90,6 +94,9 @@ The tests check purchase totals, landed-cost allocation, WAC and FIFO COGS, back
 
 ```
 server.py          HTTP server (Python standard library only)
+api/index.py       Vercel entry point (same server, Turso database)
+vercel.json        Vercel routing, region and security headers
+shop/remote.py     Turso / libSQL connection (standard library only)
 shop/db.py         schema (suppliers, products, variants, purchases, sales, payments,
                    returns, expenses, inventory movements, capital, audit log)
 shop/ledger.py     inventory costing engine (WAC / FIFO replay)

@@ -18,7 +18,7 @@ D1, D2, D3, D4 = "2025-04-01", "2025-04-05", "2025-04-10", "2025-04-15"
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.conn = db.init_db(os.path.join(self.tmp.name, "t.db"))
+        self.conn = db.init_db(self.db_target())
         auth.create_owner(self.conn, {"full_name": "Owner", "username": "owner", "password": "secret123",
                                       "shop_name": "Test Shop"})
         self.owner = self.conn.execute("SELECT * FROM users WHERE username='owner'").fetchone()
@@ -29,6 +29,9 @@ class Base(unittest.TestCase):
         self.pid = S.save_product(self.conn, self.owner, {"name": "Kurti K1", "category_id": self.cat,
                                                           "retail_price": 500, "wholesale_price": 400})
         self.v = self.conn.execute("SELECT id FROM variants WHERE product_id=?", (self.pid,)).fetchone()[0]
+
+    def db_target(self):
+        return os.path.join(self.tmp.name, "t.db")
 
     def tearDown(self):
         self.conn.close()
