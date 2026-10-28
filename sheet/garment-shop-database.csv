@@ -1,25 +1,9 @@
-Date of Entry,Product ID,Product Category,Product Type,Sizes,Seller,Cost,Total Units,Selling Price,Units Sold,"={""Units available"";ARRAYFORMULA(IF(B2:B="""",,H2:H-J2:J))}","={""Revenue"";ARRAYFORMULA(IF(B2:B="""",,J2:J*I2:I))}","={""Profit"";ARRAYFORMULA(IF(B2:B="""",,J2:J*(I2:I-G2:G)))}"
-2026-07-03,SLK-002,Women,Silk Saree,Free Size,Surat Silk House (sample),2211,4,4499,3,,,
-2026-07-08,JNS-003,Men,Jeans,"30, 32, 34, 36",Delhi Menswear (sample),527,12,1299,12,,,
-2026-07-10,SAR-005,Women,Saree,Free Size,Surat Silk House (sample),645,17,1299,17,,,
-2026-07-13,KUR-004,Women,Kurti,"S, M, L, XL",Jaipur Prints (sample),363,38,799,38,,,
-2026-07-17,SHT-001,Men,Formal Shirt,"38, 40, 42, 44",Delhi Menswear (sample),369,24,899,16,,,
-2026-07-27,FRK-006,Kids,Frock,"2-3Y, 4-5Y, 6-7Y",Delhi Kids Fashion (sample),265,20,599,13,,,
-2026-08-02,KUR-012,Women,Kurti,"S, M, L, XL",Jaipur Prints (sample),398,30,799,16,,,
-2026-08-08,KST-009,Kids,Shirt & Shorts Set,"4Y, 6Y, 8Y",Delhi Kids Fashion (sample),211,15,499,12,,,
-2026-08-14,SHT-011,Men,Formal Shirt,"38, 40, 42, 44",Delhi Menswear (sample),367,25,899,22,,,
-2026-08-15,FRK-008,Kids,Frock,"2-3Y, 4-5Y, 6-7Y",Delhi Kids Fashion (sample),256,18,599,14,,,
-2026-08-16,SAR-007,Women,Saree,Free Size,Surat Silk House (sample),662,12,1299,9,,,
-2026-08-24,SAL-010,Women,Salwar Suit,"M, L, XL",Jaipur Prints (sample),895,12,1899,9,,,
-2026-09-12,SHT-016,Men,Formal Shirt,"38, 40, 42, 44",Delhi Menswear (sample),362,20,899,11,,,
-2026-09-13,TEE-018,Men,T-Shirt,"S, M, L, XL",Tiruppur Knitwear (sample),138,54,349,21,,,
-2026-09-15,SAR-013,Women,Saree,Free Size,Surat Silk House (sample),622,21,1299,10,,,
-2026-09-16,KST-017,Kids,Shirt & Shorts Set,"4Y, 6Y, 8Y",Delhi Kids Fashion (sample),210,19,499,8,,,
-2026-09-22,VST-014,Men,Vest,"85, 90, 95, 100",Tiruppur Knitwear (sample),72,26,169,15,,,
-2026-09-22,FRK-015,Kids,Frock,"2-3Y, 4-5Y, 6-7Y",Delhi Kids Fashion (sample),268,23,599,12,,,
-2026-10-10,HOD-022,Unisex,Hoodie,"S, M, L",Tiruppur Knitwear (sample),399,17,999,4,,,
-2026-10-11,JNS-023,Men,Jeans,"30, 32, 34, 36",Delhi Menswear (sample),544,18,1299,4,,,
-2026-10-13,SAR-020,Women,Saree,Free Size,Surat Silk House (sample),680,23,1299,7,,,
-2026-10-18,TEE-019,Men,T-Shirt,"S, M, L, XL",Tiruppur Knitwear (sample),137,38,349,11,,,
-2026-10-22,SLK-021,Women,Silk Saree,Free Size,Surat Silk House (sample),2141,5,4499,0,,,
-2026-10-22,DUP-024,Women,Dupatta,Free Size,Jaipur Prints (sample),185,16,449,4,,,
+Date of Entry,Product Category,Product Type,Sizes,Seller,CP,Total Units,Total Cost,SP,Units Sold,Units Available,Revenue - Wholesale,Profit - Wholesale,Units sold,Retail SP,Retail Revenue,Profit - Retail
+05/08/2026,Kurti Set,Sample Floral,M,Sample Seller A,320,24,7680,380,20,4,7600,1200,2,450,900,260
+05/08/2026,Kurti Set,Sample Floral,L,Sample Seller A,320,24,7680,380,24,0,9120,1440,-,-,-,-
+18/08/2026,Salwar Kameez,Sample Printed,XL,Sample Seller B,410,30,12300,470,18,12,8460,1080,4,560,2240,600
+02/09/2026,Co-ord Set,,XXL,Sample Seller C,280,20,5600,320,10,10,3200,400,-,-,-,-
+15/09/2026,One Piece Gown,Sample Plain,XL,Sample Seller D,230,10,2300,-,-,-,-,-,3,330,990,300
+28/09/2026,Salwar Kameez,Sample Printed,XXL,Sample Seller B,410,16,6560,470,16,0,7520,960,-,-,-,-
+06/10/2026,Co-ord Set,Sample Deep Print,XL,Sample Seller C,290,18,5220,330,8,10,2640,320,1,400,400,110
+20/10/2026,Kurti Set,Sample Floral,XL,Sample Seller A,330,12,3960,-,-,-,-,-,-,-,-,-

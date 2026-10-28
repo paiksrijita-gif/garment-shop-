@@ -36,41 +36,34 @@ Row 1 holds the column headers; don't rename or remove them. Each row below is o
 
 | Column | What to type |
 |---|---|
-| Date of Entry | Date the stock came in, e.g. `27/10/2026` |
-| Product ID | Your code for the item, e.g. `KUR-001` (required) |
-| Product Category | e.g. Women, Men, Kids |
-| Product Type | e.g. Kurti, Saree, Jeans |
-| Sizes | e.g. `S, M, L, XL` or `Free Size` |
+| Date of Entry | Date the stock came in, e.g. `26/10/2026` |
+| Product Category | e.g. Salwar Kameez, Co-ord Set |
+| Product Type | Design or brand, e.g. Pratibha Dresses (can be left empty) |
+| Sizes | e.g. `XXL` |
 | Seller | Who you bought it from |
-| Cost | Cost **per unit** in ₹ (numbers only) |
+| CP | Cost price **per unit** in ₹ (numbers only) |
 | Total Units | Units received |
-| Selling Price | Selling price **per unit** in ₹ |
-| Units Sold | Update this as items sell |
-| Units available, Revenue, Profit | Worked out automatically — leave them alone |
+| SP | Wholesale selling price per unit |
+| Units Sold | Units sold **wholesale** |
+| Units sold | Units sold **retail** (the second "Units sold" column, before Retail SP) |
+| Retail SP | Retail selling price per unit |
+| Total Cost, Units Available, Revenue/Profit columns | Your own formulas — the dashboard works these out itself |
 
-How the numbers are worked out:
-- **Units available** = Total Units − Units Sold
-- **Revenue** = Units Sold × Selling Price
-- **Profit** = Units Sold × (Selling Price − Cost). Unsold stock is not counted as a loss; it stays as stock at cost.
+Use `-` or leave a cell empty when there's nothing to enter.
 
-The website always calculates these three columns itself, so they are right on the dashboard even if the sheet's own formula cells show an error.
+How the dashboard works out the numbers:
+- **Units Available** = Total Units − wholesale units sold − retail units sold
+- **Wholesale revenue** = Units Sold × SP, and **wholesale profit** = Units Sold × (SP − CP)
+- **Retail revenue** = Units sold × Retail SP, and **retail profit** = Units sold × (Retail SP − CP)
+- Unsold stock is not counted as a loss; it stays as stock at cost.
+
+Because the dashboard calculates these itself, its numbers are right even if a formula in the sheet is wrong. **One to fix:** the sheet's own Units Available formula only subtracts wholesale sales. For Pratibha Dresses XXL (Sachi-2) it shows 28, but 3 were also sold retail, so 25 are left. To match, change that column's formula to Total Units − Units Sold − Units sold: in K2, `=IF(G2="","",G2-N(J2)-N(N2))`, then drag it down.
 
 After you edit the sheet, press **Refresh** on the dashboard. Without that, changes appear within about 15 seconds.
 
-**Before you enter real data,** delete the 24 sample rows. Their seller names end in "(sample)".
+**If a row has a problem** (text in a number column, units sold without a price, more units sold than stocked), the dashboard lists it under *rows in the sheet need attention* and leaves the rest working.
 
-**If a row is wrong** (missing Product ID, text in a number column, more units sold than stocked), the dashboard lists it under *rows in the sheet need attention* and leaves the rest working.
-
-### Fixing the three formula columns in the sheet (optional)
-
-When the sheet was created, cells K1, L1 and M1 came out as `#NAME?`. The dashboard doesn't need them. If you want the columns filled in the sheet as well:
-
-1. Type the headers `Units available`, `Revenue` and `Profit` into K1, L1 and M1.
-2. Type these formulas into row 2:
-   - K2: `=IF(B2="","",H2-J2)`
-   - L2: `=IF(B2="","",J2*I2)`
-   - M2: `=IF(B2="","",J2*(I2-G2))`
-3. Select K2:M2 and drag the small square at the corner down as far as you need.
+The dashboard reads the **first tab** of the sheet. If you ever move the data to another tab, add `GOOGLE_SHEET_GID` in Vercel with that tab's number (the digits after `gid=` in its link).
 
 ## Good to know
 

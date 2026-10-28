@@ -61,7 +61,7 @@ function filterBar(data, f) {
     return field(label, sel);
   };
   const presets = datePresets().filter((p) => p.key !== 'today' && p.key !== '7d');
-  const search = h('input', { type: 'search', placeholder: 'Product ID, type, size, seller…', value: f.q || '' });
+  const search = h('input', { type: 'search', placeholder: 'Category, type, size, seller…', value: f.q || '' });
   search.addEventListener('change', () => apply({ q: search.value }));
   const bar = h('div', { class: 'filters' },
     h('div', { class: 'stack period', style: { gap: '5px' } }, h('span', { class: 'small muted' }, 'Date of entry'),
@@ -129,15 +129,16 @@ function render(data, f) {
   }
 
   parts.push(h('div', { class: 'kpis' },
-    kpi('Revenue', fmt.inr(k.revenue), 'Units sold × selling price'),
-    kpi('Profit', fmt.inr(k.profit), 'Revenue − cost of units sold'),
-    kpi('Profit margin', fmt.pct(k.margin), 'Profit ÷ revenue'),
-    kpi('Units sold', fmt.num(k.units_sold), `${fmt.pct(k.sell_through)} of stock sold`),
-    kpi('Units available', fmt.num(k.units_available), `of ${fmt.num(k.total_units)} units stocked`),
-    kpi('Stock purchased (cost)', fmt.inr(k.stock_cost), 'Total units × cost'),
-    kpi('Cost of units sold', fmt.inr(k.cogs), 'Units sold × cost'),
-    kpi('Unsold stock at cost', fmt.inr(k.unsold_cost), `Worth ${fmt.inr0(k.unsold_retail)} at selling price`),
-    kpi('Products', fmt.num(k.products), `${k.entries} entries`),
+    kpi('Total revenue', fmt.inr(k.revenue), 'Wholesale + retail'),
+    kpi('Total profit', fmt.inr(k.profit), `${fmt.pct(k.margin)} margin`),
+    kpi('Wholesale revenue', fmt.inr(k.ws_revenue), `Profit ${fmt.inr(k.ws_profit)} · ${fmt.num(k.ws_sold)} units`),
+    kpi('Retail revenue', fmt.inr(k.rt_revenue), `Profit ${fmt.inr(k.rt_profit)} · ${fmt.num(k.rt_sold)} units`),
+    kpi('Units sold', fmt.num(k.units_sold), `${fmt.pct(k.sell_through)} of ${fmt.num(k.total_units)} units`),
+    kpi('Units available', fmt.num(k.units_available), 'Total − wholesale − retail sold'),
+    kpi('Stock purchased (cost)', fmt.inr(k.stock_cost), 'CP × total units'),
+    kpi('Cost of units sold', fmt.inr(k.cogs), 'CP × units sold'),
+    kpi('Unsold stock at cost', fmt.inr(k.unsold_cost), 'CP × units available'),
+    kpi('Entries', fmt.num(k.entries), `${k.not_sold_yet} not sold yet`),
     kpi('Low / out of stock', `${k.low_stock} / ${k.out_of_stock}`, 'Entries needing restock')));
 
   const rp = [{ key: 'revenue', label: 'Revenue', color: COLORS.s1 }, { key: 'profit', label: 'Profit', color: COLORS.s3 }];
@@ -147,11 +148,13 @@ function render(data, f) {
   const months = data.by_month.map((m) => Object.assign({ period: m.name }, m));
   const pick = (key) => (r) => { writeFilters(Object.assign({}, f, { [key]: r.name })); load(); };
 
+  const chCols = [{ label: 'Channel', key: 'name' }, qty('units_sold', 'Units sold'), money('revenue', 'Revenue'), money('profit', 'Profit'),
+    { label: 'Margin', num: true, render: (r) => fmt.pct(r.margin) }];
   parts.push(h('h2', { class: 'section-title' }, 'Charts'), h('div', { class: 'charts' },
     chartCard({
-      title: 'Revenue and profit by month', sub: 'Grouped by Date of Entry', wide: true, legendEl: legend(rp),
-      chart: columnChart({ data: months, series: rp, mode: 'group' }),
-      tableFn: tbl(groupCols('Month').map((c) => c.key === 'name' ? Object.assign({}, c, { render: (r) => fmt.month(r.name) }) : c), data.by_month),
+      title: 'Wholesale vs retail', sub: 'Revenue and profit by sales channel', legendEl: legend(rp),
+      chart: hbarChart({ data: data.channels.map((c) => Object.assign({ label: c.name, _extra: [{ label: 'Units sold', value: fmt.num(c.units_sold) }] }, c)), series: rp }),
+      tableFn: tbl(chCols, data.channels),
     }),
     chartCard({
       title: 'By product category', sub: 'Click a bar to filter', legendEl: legend(rp),
@@ -159,46 +162,55 @@ function render(data, f) {
       tableFn: tbl(groupCols('Category'), data.by_category),
     }),
     chartCard({
-      title: 'Top products by profit', sub: 'Per Product ID',
+      title: 'Revenue and profit by month', sub: 'Grouped by Date of Entry', wide: true, legendEl: legend(rp),
+      chart: columnChart({ data: months, series: rp, mode: 'group' }),
+      tableFn: tbl(groupCols('Month').map((c) => c.key === 'name' ? Object.assign({}, c, { render: (r) => fmt.month(r.name) }) : c), data.by_month),
+    }),
+    chartCard({
+      title: 'Top products by profit', sub: 'Product type · size (seller)',
       chart: hbarChart({
-        data: data.top_profit.map((g) => Object.assign({ label: `${g.name} · ${g.type}`, _extra: [{ label: 'Revenue', value: fmt.inr(g.revenue) }, { label: 'Units sold', value: fmt.num(g.units_sold) }] }, g)),
-        series: [{ key: 'profit', label: 'Profit', color: COLORS.s3 }],
+        data: data.top_profit.filter((g) => g.profit !== 0).map((g) => Object.assign({ label: g.name, _extra: [{ label: 'Revenue', value: fmt.inr(g.revenue) }, { label: 'Units sold', value: fmt.num(g.units_sold) }] }, g)),
+        series: [{ key: 'profit', label: 'Profit', color: COLORS.s3 }], emptyText: 'Nothing sold yet',
       }),
-      tableFn: tbl([{ label: 'Product ID', key: 'name' }, { label: 'Type', key: 'type' }, { label: 'Category', key: 'category' },
+      tableFn: tbl([{ label: 'Product', key: 'name' }, { label: 'Category', key: 'category' },
         qty('units_sold', 'Sold'), money('revenue', 'Revenue'), money('profit', 'Profit')], data.top_profit),
     }),
     chartCard({
-      title: 'Units sold vs available by product type', sub: 'Click a bar to filter',
+      title: 'Units sold vs available by category', sub: 'Click a bar to filter',
       legendEl: legend([{ label: 'Sold', color: COLORS.s1 }, { label: 'Available', color: COLORS.s2 }]),
       chart: hbarChart({
-        data: data.by_type.map((g) => Object.assign({ label: g.name }, g)),
+        data: data.by_category.map((g) => Object.assign({ label: g.name }, g)),
         series: [{ key: 'units_sold', label: 'Sold', color: COLORS.s1 }, { key: 'units_available', label: 'Available', color: COLORS.s2 }],
-        valFmt: fmt.num, shortFmt: fmt.compactNum, onClick: pick('type'),
+        valFmt: fmt.num, shortFmt: fmt.compactNum, onClick: pick('category'),
       }),
-      tableFn: tbl(groupCols('Product type'), data.by_type),
+      tableFn: tbl(groupCols('Category'), data.by_category),
     }),
     chartCard({
-      title: 'Stock purchased by seller', sub: 'Total units × cost · click to filter',
+      title: 'Stock purchased by seller', sub: 'CP × total units · click to filter', wide: true,
       chart: hbarChart({
         data: data.by_seller.map((g) => Object.assign({ label: g.name, _extra: [{ label: 'Revenue', value: fmt.inr(g.revenue) }, { label: 'Profit', value: fmt.inr(g.profit) }] }, g)),
-        series: [{ key: 'stock_cost', label: 'Stock cost', color: COLORS.s1 }], onClick: pick('seller'),
+        series: [{ key: 'stock_cost', label: 'Stock cost', color: COLORS.s1 }], onClick: pick('seller'), max: 20,
       }),
       tableFn: tbl(groupCols('Seller'), data.by_seller),
     })));
 
   if (data.attention.length) {
     parts.push(h('div', { style: { height: '16px' } }), card(`Needs restocking (${data.attention.length})`, sortableTableStatic([
-      { label: 'Product ID', key: 'product_id' }, { label: 'Type', key: 'type' }, { label: 'Sizes', key: 'sizes' },
+      { label: 'Category', key: 'category' }, { label: 'Type', key: 'type' }, { label: 'Sizes', key: 'sizes' },
       { label: 'Seller', key: 'seller' }, qty('units_available', 'Available'), qty('total_units', 'Stocked'),
       { label: 'Status', render: stockBadge }], data.attention), { sub: 'Out of stock, or 10% or less left' }));
   }
 
+  const dash = (v, f) => (v ? f(v) : '—');
   const entryCols = [
     { label: 'Date of Entry', key: 'date', render: (r) => fmt.date(r.date) },
-    { label: 'Product ID', key: 'product_id' }, { label: 'Category', key: 'category' }, { label: 'Type', key: 'type' },
-    { label: 'Sizes', key: 'sizes' }, { label: 'Seller', key: 'seller' },
-    money('cost', 'Cost'), qty('total_units', 'Total Units'), money('price', 'Selling Price'), qty('units_sold', 'Units Sold'),
-    qty('units_available', 'Units available'), money('revenue', 'Revenue'), money('profit', 'Profit'),
+    { label: 'Category', key: 'category' }, { label: 'Type', key: 'type' }, { label: 'Sizes', key: 'sizes' },
+    { label: 'Seller', key: 'seller' }, money('cost', 'CP'), qty('total_units', 'Total Units'), money('stock_cost', 'Total Cost'),
+    { label: 'SP', num: true, key: 'ws_price', render: (r) => dash(r.ws_price, fmt.inr) },
+    { label: 'Sold (wholesale)', num: true, key: 'ws_sold', render: (r) => dash(r.ws_sold, fmt.num) },
+    { label: 'Retail SP', num: true, key: 'rt_price', render: (r) => dash(r.rt_price, fmt.inr) },
+    { label: 'Sold (retail)', num: true, key: 'rt_sold', render: (r) => dash(r.rt_sold, fmt.num) },
+    qty('units_available', 'Available'), money('revenue', 'Revenue'), money('profit', 'Profit'),
     { label: 'Stock', key: 'units_available', render: stockBadge },
   ];
   const tableHost = h('div');

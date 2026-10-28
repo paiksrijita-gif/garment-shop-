@@ -1,19 +1,24 @@
 """Read the Google Sheet "database" and turn it into dashboard metrics.
 
-The sheet has one row per stock entry with these columns (header names are
-matched case- and space-insensitively):
+One row per stock entry. Header names are matched case- and
+space-insensitively, and extra columns are ignored:
 
-    Date of Entry | Product ID | Product Category | Product Type | Sizes |
-    Seller | Cost | Total Units | Selling Price | Units Sold |
-    Units available | Revenue | Profit
+    Date of Entry | Product Category | Product Type | Sizes | Seller |
+    CP | Total Units | Total Cost | SP | Units Sold | Units Available |
+    Revenue - Wholesale | Profit - Wholesale |
+    Units sold | Retail SP | Retail Revenue | Profit - Retail
 
-Cost and Selling Price are per unit. The three calculated columns are
-recomputed here from the others, so a missing or broken formula in the sheet
-never changes the numbers on the dashboard:
+CP, SP and Retail SP are per unit; "-" or blank means none. The first
+"Units Sold" column is wholesale and the second (after it) is retail.
+An optional "Product ID" column is used as the product name when present.
 
-    Units available = Total Units − Units Sold
-    Revenue         = Units Sold × Selling Price
-    Profit          = Units Sold × (Selling Price − Cost)
+Totals and profits are recomputed here from the inputs, so a missing or
+wrong formula in the sheet never changes the dashboard:
+
+    Total Cost       = CP × Total Units
+    Units Available  = Total Units − wholesale units sold − retail units sold
+    Wholesale revenue = Units Sold × SP          profit = Units Sold × (SP − CP)
+    Retail revenue    = Units sold × Retail SP   profit = Units sold × (Retail SP − CP)
 
 Profit only counts units actually sold; unsold units stay as stock at cost.
 """
@@ -29,23 +34,25 @@ from datetime import date, datetime, timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
-COLUMNS = OrderedDict([
-    ("date", "Date of Entry"),
-    ("product_id", "Product ID"),
-    ("category", "Product Category"),
-    ("type", "Product Type"),
-    ("sizes", "Sizes"),
-    ("seller", "Seller"),
-    ("cost", "Cost"),
-    ("total_units", "Total Units"),
-    ("price", "Selling Price"),
-    ("units_sold", "Units Sold"),
-    ("units_available", "Units available"),
-    ("revenue", "Revenue"),
-    ("profit", "Profit"),
+LABELS = OrderedDict([
+    ("date", "Date of Entry"), ("product_id", "Product ID"), ("category", "Product Category"),
+    ("type", "Product Type"), ("sizes", "Sizes"), ("seller", "Seller"), ("cost", "CP"),
+    ("total_units", "Total Units"), ("ws_price", "SP"), ("ws_sold", "Units Sold"),
+    ("rt_sold", "Units sold (retail)"), ("rt_price", "Retail SP"),
 ])
-REQUIRED = ["product_id", "cost", "total_units", "price", "units_sold"]
-NUMERIC = ["cost", "total_units", "price", "units_sold"]
+# header text (letters only, lower case) → field
+ALIASES = {
+    "dateofentry": "date", "date": "date", "productid": "product_id",
+    "productcategory": "category", "category": "category", "producttype": "type", "type": "type",
+    "sizes": "sizes", "size": "sizes", "seller": "seller", "supplier": "seller",
+    "cp": "cost", "cost": "cost", "costprice": "cost",
+    "totalunits": "total_units",
+    "sp": "ws_price", "sellingprice": "ws_price", "wholesalesp": "ws_price", "wholesaleprice": "ws_price",
+    "retailsp": "rt_price", "retailsellingprice": "rt_price", "retailprice": "rt_price",
+    "retailunitssold": "rt_sold", "wholesaleunitssold": "ws_sold",
+}
+REQUIRED = ["cost", "total_units"]
+NUMERIC = ["cost", "total_units", "ws_price", "ws_sold", "rt_price", "rt_sold"]
 MONTHS = {m: i + 1 for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])}
 
@@ -54,7 +61,17 @@ def _key(text):
     return re.sub(r"[^a-z]", "", (text or "").lower())
 
 
-HEADER_KEYS = {_key(label): field for field, label in COLUMNS.items()}
+def map_header(header):
+    """Column index for each field. "Units Sold" is wholesale the first
+    time it appears and retail the second time."""
+    index = {}
+    for i, h in enumerate(header):
+        k = _key(h)
+        field = "ws_sold" if k == "unitssold" and "ws_sold" not in index else \
+            "rt_sold" if k == "unitssold" else ALIASES.get(k)
+        if field and field not in index:
+            index[field] = i
+    return index
 
 
 # ------------------------------------------------------------------ fetching
@@ -118,7 +135,7 @@ def load_csv_text(fresh=False, ttl=20):
 
 def parse_number(value):
     text = str(value or "").strip()
-    if not text:
+    if not text or text in ("-", "–", "—", "NA", "N/A"):
         return None
     neg = text.startswith("(") and text.endswith(")")
     text = re.sub(r"[₹,\s()]|Rs\.?|INR", "", text, flags=re.I)
@@ -184,50 +201,54 @@ def parse_sheet(text):
     issues = []
     if not reader:
         return [], ["The sheet is empty."]
-    header = reader[0]
-    index = {}
-    for i, h in enumerate(header):
-        field = HEADER_KEYS.get(_key(h))
-        if field and field not in index:
-            index[field] = i
-    missing = [COLUMNS[f] for f in REQUIRED if f not in index]
+    index = map_header(reader[0])
+    missing = [LABELS[f] for f in REQUIRED if f not in index]
     if missing:
         return [], ["Missing column(s) in row 1: %s" % ", ".join(missing)]
 
     def cell(r, field):
         i = index.get(field)
-        return r[i].strip() if i is not None and i < len(r) else ""
+        v = r[i].strip() if i is not None and i < len(r) else ""
+        return "" if v in ("-", "–", "—") else v
 
-    body = [(n + 2, r) for n, r in enumerate(reader[1:]) if any(c.strip() for c in r)]
+    body = []
+    for n, r in enumerate(reader[1:]):
+        if not any(c.strip() and c.strip() != "-" for c in r):
+            continue
+        body.append((n + 2, r))
     dates = _resolve_dates([cell(r, "date") for _, r in body])
     rows = []
     for (line, r), d in zip(body, dates):
-        pid = cell(r, "product_id")
-        if not pid:
-            issues.append("Row %d: Product ID is empty — row skipped." % line)
-            continue
-        nums = {}
-        bad = False
+        name = cell(r, "product_id")
+        if not name:  # e.g. "Pratibha Dresses · XXL (Sachi-2)"
+            name = " · ".join(x for x in (cell(r, "type") or cell(r, "category"), cell(r, "sizes")) if x) or "Row %d" % line
+            if cell(r, "seller"):
+                name += " (%s)" % cell(r, "seller")
+        nums, bad = {}, False
         for f in NUMERIC:
             v = parse_number(cell(r, f))
             if v == "bad":
-                issues.append("Row %d (%s): %s is not a number — row skipped." % (line, pid, COLUMNS[f]))
+                issues.append("Row %d (%s): %s '%s' is not a number — row skipped." % (line, name, LABELS[f], cell(r, f)))
                 bad = True
             elif v is not None and v < 0:
-                issues.append("Row %d (%s): %s is negative — row skipped." % (line, pid, COLUMNS[f]))
+                issues.append("Row %d (%s): %s is negative — row skipped." % (line, name, LABELS[f]))
                 bad = True
             nums[f] = v or 0.0
         if bad:
             continue
         if d == "bad":
-            issues.append("Row %d (%s): Date of Entry '%s' was not understood." % (line, pid, cell(r, "date")))
+            issues.append("Row %d (%s): Date of Entry '%s' was not understood." % (line, name, cell(r, "date")))
             d = None
-        if nums["units_sold"] > nums["total_units"]:
-            issues.append("Row %d (%s): Units Sold (%g) is more than Total Units (%g)." % (
-                line, pid, nums["units_sold"], nums["total_units"]))
+        if nums["ws_sold"] and not nums["ws_price"]:
+            issues.append("Row %d (%s): %g units sold wholesale but SP is empty." % (line, name, nums["ws_sold"]))
+        if nums["rt_sold"] and not nums["rt_price"]:
+            issues.append("Row %d (%s): %g units sold retail but Retail SP is empty." % (line, name, nums["rt_sold"]))
+        if nums["ws_sold"] + nums["rt_sold"] > nums["total_units"]:
+            issues.append("Row %d (%s): %g units sold is more than Total Units (%g)." % (
+                line, name, nums["ws_sold"] + nums["rt_sold"], nums["total_units"]))
         row = {
-            "row": line, "date": d, "product_id": pid,
-            "category": cell(r, "category") or "Uncategorised", "type": cell(r, "type") or "Other",
+            "row": line, "date": d, "name": name, "product_id": cell(r, "product_id"),
+            "category": cell(r, "category") or "Uncategorised", "type": cell(r, "type") or "—",
             "sizes": cell(r, "sizes"), "seller": cell(r, "seller") or "Unknown",
         }
         row.update(nums)
@@ -240,27 +261,33 @@ def _r2(x):
     return round(x + 0.0, 2)
 
 
-def _compute(row):
-    row["units_available"] = row["total_units"] - row["units_sold"]
-    row["revenue"] = _r2(row["units_sold"] * row["price"])
-    row["cogs"] = _r2(row["units_sold"] * row["cost"])
-    row["profit"] = _r2(row["revenue"] - row["cogs"])
-    row["stock_cost"] = _r2(row["total_units"] * row["cost"])
-    row["unsold_cost"] = _r2(max(row["units_available"], 0) * row["cost"])
-    row["unsold_retail"] = _r2(max(row["units_available"], 0) * row["price"])
-    row["margin"] = _pct(row["profit"], row["revenue"])
-    row["low_stock"] = 0 < row["units_available"] <= max(2, 0.1 * row["total_units"])
-    row["out_of_stock"] = row["total_units"] > 0 and row["units_available"] <= 0
-
-
 def _pct(a, b):
     return round(a * 100.0 / b, 1) if b else None
 
 
+def _compute(row):
+    c = row["cost"]
+    row["units_sold"] = row["ws_sold"] + row["rt_sold"]
+    row["units_available"] = row["total_units"] - row["units_sold"]
+    row["stock_cost"] = _r2(row["total_units"] * c)
+    row["ws_revenue"] = _r2(row["ws_sold"] * row["ws_price"])
+    row["ws_profit"] = _r2(row["ws_revenue"] - row["ws_sold"] * c)
+    row["rt_revenue"] = _r2(row["rt_sold"] * row["rt_price"])
+    row["rt_profit"] = _r2(row["rt_revenue"] - row["rt_sold"] * c)
+    row["revenue"] = _r2(row["ws_revenue"] + row["rt_revenue"])
+    row["cogs"] = _r2(row["units_sold"] * c)
+    row["profit"] = _r2(row["ws_profit"] + row["rt_profit"])
+    row["unsold_cost"] = _r2(max(row["units_available"], 0) * c)
+    row["margin"] = _pct(row["profit"], row["revenue"])
+    row["low_stock"] = 0 < row["units_available"] <= max(2, 0.1 * row["total_units"])
+    row["out_of_stock"] = row["total_units"] > 0 and row["units_available"] <= 0
+    row["unsold"] = row["units_sold"] == 0
+
+
 # ------------------------------------------------------------------ metrics
 
-SUM_FIELDS = ["total_units", "units_sold", "units_available", "revenue", "cogs", "profit",
-              "stock_cost", "unsold_cost", "unsold_retail"]
+SUM_FIELDS = ["total_units", "units_sold", "ws_sold", "rt_sold", "units_available", "stock_cost",
+              "revenue", "cogs", "profit", "ws_revenue", "ws_profit", "rt_revenue", "rt_profit", "unsold_cost"]
 
 
 def _totals(rows):
@@ -270,11 +297,14 @@ def _totals(rows):
             t[f] += r[f]
     t = {k: _r2(v) for k, v in t.items()}
     t["entries"] = len(rows)
-    t["products"] = len({r["product_id"] for r in rows})
+    t["products"] = len({r["name"] for r in rows})
     t["margin"] = _pct(t["profit"], t["revenue"])
+    t["ws_margin"] = _pct(t["ws_profit"], t["ws_revenue"])
+    t["rt_margin"] = _pct(t["rt_profit"], t["rt_revenue"])
     t["sell_through"] = _pct(t["units_sold"], t["total_units"])
     t["low_stock"] = sum(1 for r in rows if r["low_stock"])
     t["out_of_stock"] = sum(1 for r in rows if r["out_of_stock"])
+    t["not_sold_yet"] = sum(1 for r in rows if r["unsold"])
     return t
 
 
@@ -301,32 +331,37 @@ def filter_rows(rows, f):
             out = [r for r in out if r[field] == f[field]]
     if f.get("q"):
         q = f["q"].lower()
-        out = [r for r in out if q in " ".join(str(r[k]) for k in ("product_id", "category", "type", "sizes", "seller")).lower()]
+        out = [r for r in out if q in " ".join(str(r[k]) for k in ("name", "category", "type", "sizes", "seller")).lower()]
     return out
 
 
 def dashboard(rows, f=None):
     f = f or {}
     sel = filter_rows(rows, f)
-    by_product = _group(sel, lambda r: r["product_id"])
+    by_product = _group(sel, lambda r: r["name"])
     info = {}
     for r in sel:
-        info.setdefault(r["product_id"], r)
+        info.setdefault(r["name"], r)
     for p in by_product:
         r = info[p["name"]]
         p.update(category=r["category"], type=r["type"], seller=r["seller"], sizes=r["sizes"])
     months = sorted(_group([r for r in sel if r["date"]], lambda r: r["date"][:7]), key=lambda g: g["name"])
+    k = _totals(sel)
     return {
-        "kpis": _totals(sel),
-        "by_category": sorted(_group(sel, lambda r: r["category"]), key=lambda g: -g["revenue"]),
-        "by_type": sorted(_group(sel, lambda r: r["type"]), key=lambda g: -g["units_sold"]),
+        "kpis": k,
+        "channels": [
+            {"name": "Wholesale", "units_sold": k["ws_sold"], "revenue": k["ws_revenue"], "profit": k["ws_profit"], "margin": k["ws_margin"]},
+            {"name": "Retail", "units_sold": k["rt_sold"], "revenue": k["rt_revenue"], "profit": k["rt_profit"], "margin": k["rt_margin"]},
+        ],
+        "by_category": sorted(_group(sel, lambda r: r["category"]), key=lambda g: (-g["revenue"], -g["stock_cost"])),
+        "by_type": sorted(_group(sel, lambda r: r["type"]), key=lambda g: (-g["units_sold"], -g["total_units"])),
         "by_seller": sorted(_group(sel, lambda r: r["seller"]), key=lambda g: -g["stock_cost"]),
         "by_month": months,
         "top_profit": sorted(by_product, key=lambda g: -g["profit"])[:10],
         "attention": sorted([r for r in sel if r["low_stock"] or r["out_of_stock"]],
                             key=lambda r: (not r["out_of_stock"], r["units_available"])),
-        "rows": sorted(sel, key=lambda r: (r["date"] or "", r["row"]), reverse=True),
-        "options": {k: sorted({r[k] for r in rows}) for k in ("category", "type", "seller")},
+        "rows": sorted(sel, key=lambda r: (r["date"] or "", -r["row"]), reverse=True),
+        "options": {k2: sorted({r[k2] for r in rows}) for k2 in ("category", "type", "seller")},
         "date_range": [min((r["date"] for r in rows if r["date"]), default=None),
                        max((r["date"] for r in rows if r["date"]), default=None)],
     }
