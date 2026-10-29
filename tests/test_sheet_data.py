@@ -82,10 +82,70 @@ class ParseTests(unittest.TestCase):
         self.assertEqual((rows[0]["name"], rows[0]["profit"], rows[0]["units_available"]), ("A", 30, 2))
 
 
+INV = os.path.join(ROOT, "sheet", "sample-inventory.csv")
+SALES = os.path.join(ROOT, "sheet", "sample-sales.csv")
+
+
+def read(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+INV_HEAD = "Date of Entry,Product Type,Product Category,Sizes,Seller,CP,Total Units,Total Cost\n"
+SALES_HEAD = ("Date of Entry,Product Type,Product Category,Sizes,Seller,CP,Total Units,Total Cost,Wholesale SP,"
+              "Units Sold,Units Available,Revenue - Wholesale,Profit - Wholesale,Units sold,Retail SP,Revenue- Retail,"
+              "Profit - Retail\n")
+
+
+class WorkbookTests(unittest.TestCase):
+    """Inventory tab joined with the Sales tab."""
+
+    def test_join_by_row_details_not_position(self):
+        inv = INV_HEAD + "26/10/2026,Nafeesa,Co-ord,XXL,Shahjahan,250,16,4000\n26/10/2026,Rakhi,Salwar,XXXL,Rakhi,475,12,5700\n"
+        # Sales rows in a different order, with different spacing / capitals
+        sales = SALES_HEAD + ("26/10/2026,rakhi,Salwar,XXXL,Rakhi,475,12,5700,500,2,,,,1,600,,\n"
+                              "26/10/2026,Nafeesa,Co-ord,XXL,Shahjahan,250,16,4000,290,16,0,4640,640,-,-,-,-\n")
+        rows, issues = SD.parse_workbook(inv, sales)
+        self.assertEqual(issues, [])
+        by = {r["type"]: r for r in rows}
+        self.assertEqual((by["Nafeesa"]["ws_revenue"], by["Nafeesa"]["units_available"]), (4640, 0))
+        self.assertEqual((by["Rakhi"]["ws_sold"], by["Rakhi"]["rt_sold"], by["Rakhi"]["units_available"]), (2, 1, 9))
+        self.assertTrue(by["Rakhi"]["where"].startswith("Inventory row"))
+
+    def test_stock_without_sales_row_counts_as_unsold(self):
+        inv = INV_HEAD + "26/10/2026,A,C,M,S,100,5,500\n27/10/2026,B,C,M,S,100,7,700\n"
+        sales = SALES_HEAD + "26/10/2026,A,C,M,S,100,5,500,150,5,,,,,,,\n"
+        rows, issues = SD.parse_workbook(inv, sales)
+        self.assertEqual(issues, [])
+        self.assertEqual([(r["type"], r["units_sold"], r["units_available"]) for r in rows], [("A", 5, 0), ("B", 0, 7)])
+
+    def test_sale_with_no_inventory_row_is_reported(self):
+        inv = INV_HEAD + "26/10/2026,A,C,M,S,100,5,500\n"
+        sales = SALES_HEAD + "26/10/2026,A,C,M,S,100,5,500,150,1,,,,,,,\n26/10/2026,Typo,C,M,S,100,5,500,150,2,,,,,,,\n"
+        rows, issues = SD.parse_workbook(inv, sales)
+        self.assertEqual(len(rows), 2)            # counted with the Sales tab's own CP / Total Units
+        self.assertEqual(len(issues), 1)
+        self.assertIn("Sales row 3", issues[0])
+
+    def test_duplicate_rows_pair_up_in_order(self):
+        inv = INV_HEAD + "26/10/2026,A,C,M,S,100,5,500\n26/10/2026,A,C,M,S,100,5,500\n"
+        sales = SALES_HEAD + "26/10/2026,A,C,M,S,100,5,500,150,1,,,,,,,\n26/10/2026,A,C,M,S,100,5,500,150,3,,,,,,,\n"
+        rows, _ = SD.parse_workbook(inv, sales)
+        self.assertEqual([r["ws_sold"] for r in rows], [1, 3])
+
+    def test_sales_tab_without_sales_columns(self):
+        rows, issues = SD.parse_workbook(INV_HEAD + "26/10/2026,A,C,M,S,100,5,500\n", INV_HEAD)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("only stock is shown", issues[0])
+
+    def test_single_tab_still_supported(self):
+        rows, issues = SD.parse_workbook(read(SALES), None)
+        self.assertEqual((len(rows), issues), (8, []))
+
+
 class DashboardTests(unittest.TestCase):
     def setUp(self):
-        with open(os.path.join(ROOT, "sheet", "garment-shop-database.csv"), encoding="utf-8") as fh:
-            self.rows, self.issues = SD.parse_sheet(fh.read())
+        self.rows, self.issues = SD.parse_workbook(read(INV), read(SALES))
 
     def test_sample_sheet_totals(self):
         self.assertEqual(self.issues, [])
@@ -129,7 +189,8 @@ class FunctionTests(unittest.TestCase):
 
     def test_endpoint(self):
         import importlib
-        os.environ["SHEET_CSV_FILE"] = os.path.join(ROOT, "sheet", "garment-shop-database.csv")
+        os.environ["SHEET_INVENTORY_FILE"] = INV
+        os.environ["SHEET_SALES_FILE"] = SALES
         try:
             mod = importlib.import_module("api.sheet")
             httpd = ThreadingHTTPServer(("127.0.0.1", 0), mod.handler)
@@ -143,7 +204,8 @@ class FunctionTests(unittest.TestCase):
             httpd.shutdown()
             httpd.server_close()
         finally:
-            os.environ.pop("SHEET_CSV_FILE", None)
+            os.environ.pop("SHEET_INVENTORY_FILE", None)
+            os.environ.pop("SHEET_SALES_FILE", None)
 
 
 if __name__ == "__main__":

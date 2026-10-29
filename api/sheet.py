@@ -2,7 +2,8 @@
 
 Environment variables (Vercel → Project → Settings → Environment Variables):
     GOOGLE_SHEET_ID    the sheet's ID or its full link (shared as "Anyone with the link — Viewer")
-    GOOGLE_SHEET_GID   optional: the tab's gid if the data is not on the first tab
+    GOOGLE_INVENTORY_TAB / GOOGLE_SALES_TAB   optional: tab names if not "Inventory" and "Sales"
+    GOOGLE_SHEET_GID   optional: read one tab (by gid) that holds stock and sales together
 """
 import json
 import os
@@ -20,8 +21,8 @@ DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 def build(query):
     fresh = query.get("fresh") == "1"
-    text, sheet_id = sheet_data.load_csv_text(fresh=fresh)
-    rows, issues = sheet_data.parse_sheet(text)
+    sources, sheet_id = sheet_data.load_sources(fresh=fresh)
+    rows, issues = sheet_data.parse_workbook(sources["inventory"], sources["sales"])
     f = {}
     for k in ("from", "to"):
         if DATE.fullmatch(query.get(k, "")):

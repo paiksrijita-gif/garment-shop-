@@ -3,7 +3,7 @@
 
     python3 tools/dev_dashboard.py
 Uses GOOGLE_SHEET_ID from .env (your real sheet) when present, otherwise the
-sample data in sheet/garment-shop-database.csv.
+sample Inventory and Sales tabs in sheet/.
 """
 import os
 import subprocess
@@ -28,7 +28,8 @@ def load_dotenv(path):
 
 load_dotenv(os.path.join(ROOT, ".env"))
 if not os.environ.get("GOOGLE_SHEET_ID"):
-    os.environ.setdefault("SHEET_CSV_FILE", os.path.join(ROOT, "sheet", "garment-shop-database.csv"))
+    os.environ.setdefault("SHEET_INVENTORY_FILE", os.path.join(ROOT, "sheet", "sample-inventory.csv"))
+    os.environ.setdefault("SHEET_SALES_FILE", os.path.join(ROOT, "sheet", "sample-sales.csv"))
 
 from api.sheet import handler as SheetHandler  # noqa: E402
 
@@ -52,5 +53,5 @@ if __name__ == "__main__":
     subprocess.run(["sh", os.path.join(ROOT, "build-site.sh")], check=True)
     port = int(os.environ.get("PORT", sys.argv[1] if len(sys.argv) > 1 else 8002))
     print("Dashboard on http://127.0.0.1:%d  (data: %s)" % (
-        port, os.environ.get("GOOGLE_SHEET_ID") or os.environ.get("SHEET_CSV_FILE")))
+        port, os.environ.get("GOOGLE_SHEET_ID") or "sample tabs in sheet/"))
     ThreadingHTTPServer(("127.0.0.1", port), Dev).serve_forever()

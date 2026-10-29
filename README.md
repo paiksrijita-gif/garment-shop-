@@ -37,7 +37,7 @@ You can change any of these later under Settings → Opening balances & setup.
 
 A simpler online version keeps the data in one Google Sheet that you edit by hand, and shows the metrics on a website hosted on Vercel. See [DEPLOY.md](DEPLOY.md) for setup and the sheet's columns.
 
-- `sheet/garment-shop-database.csv`: the sample data the Google Sheet started with.
+- `sheet/sample-inventory.csv` and `sheet/sample-sales.csv`: sample Inventory and Sales tabs for local testing.
 - `shop/sheet_data.py`: reads the sheet and works out the metrics.
 - `api/sheet.py`: the Vercel function that serves them.
 - `sheet-site/`: the dashboard page.

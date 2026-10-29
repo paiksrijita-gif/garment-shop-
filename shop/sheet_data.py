@@ -29,6 +29,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
 
@@ -115,20 +116,43 @@ def fetch_csv(url, timeout=20):
 _cache = {}
 
 
-def load_csv_text(fresh=False, ttl=20):
-    """CSV text from SHEET_CSV_FILE (local testing) or the Google Sheet in
-    GOOGLE_SHEET_ID, cached briefly so quick filter changes don't refetch."""
-    local = os.environ.get("SHEET_CSV_FILE")
-    if local:
-        with open(local, encoding="utf-8-sig") as fh:
-            return fh.read(), None
-    sheet_id, url = sheet_csv_url(os.environ.get("GOOGLE_SHEET_ID", ""), os.environ.get("GOOGLE_SHEET_GID"))
+def tab_csv_url(sheet_id, tab_name):
+    return "https://docs.google.com/spreadsheets/d/%s/gviz/tq?tqx=out:csv&sheet=%s" % (sheet_id, quote(tab_name))
+
+
+def _cached_fetch(url, fresh, ttl):
     hit = _cache.get(url)
     if hit and not fresh and time.time() - hit[0] < ttl:
-        return hit[1], sheet_id
+        return hit[1]
     text = fetch_csv(url)
     _cache[url] = (time.time(), text)
-    return text, sheet_id
+    return text
+
+
+def load_sources(fresh=False, ttl=20):
+    """The sheet's CSV, cached briefly so quick filter changes don't refetch.
+
+    Returns ({"inventory": text, "sales": text or None}, sheet_id). By default
+    the "Inventory" and "Sales" tabs are read by name (GOOGLE_INVENTORY_TAB /
+    GOOGLE_SALES_TAB override the names). GOOGLE_SHEET_GID reads one tab that
+    holds everything. For local testing, SHEET_CSV_FILE (one tab) or
+    SHEET_INVENTORY_FILE + SHEET_SALES_FILE are read from disk."""
+    def read(path):
+        with open(path, encoding="utf-8-sig") as fh:
+            return fh.read()
+    if os.environ.get("SHEET_INVENTORY_FILE"):
+        sales = os.environ.get("SHEET_SALES_FILE")
+        return {"inventory": read(os.environ["SHEET_INVENTORY_FILE"]), "sales": read(sales) if sales else None}, None
+    if os.environ.get("SHEET_CSV_FILE"):
+        return {"inventory": read(os.environ["SHEET_CSV_FILE"]), "sales": None}, None
+    sheet_id, url = sheet_csv_url(os.environ.get("GOOGLE_SHEET_ID", ""), os.environ.get("GOOGLE_SHEET_GID"))
+    if os.environ.get("GOOGLE_SHEET_GID"):
+        return {"inventory": _cached_fetch(url, fresh, ttl), "sales": None}, sheet_id
+    inv = _cached_fetch(tab_csv_url(sheet_id, os.environ.get("GOOGLE_INVENTORY_TAB") or "Inventory"), fresh, ttl)
+    sales = _cached_fetch(tab_csv_url(sheet_id, os.environ.get("GOOGLE_SALES_TAB") or "Sales"), fresh, ttl)
+    # Google answers an unknown tab name with the first tab, so identical text
+    # means the sheet has a single tab holding everything.
+    return {"inventory": inv, "sales": None if sales == inv else sales}, sheet_id
 
 
 # ------------------------------------------------------------------ parsing
@@ -195,61 +219,128 @@ def _resolve_dates(raw_values):
     return out
 
 
-def parse_sheet(text):
-    """Return (rows, issues). Each row has the computed fields filled in."""
+DASHES = ("-", "–", "—")
+SALES_FIELDS = ["ws_price", "ws_sold", "rt_sold", "rt_price"]
+MATCH_FIELDS = ["date", "type", "category", "sizes", "seller"]
+
+
+def _records(text, tab=None):
+    """Non-blank rows of one tab as {field: text}, plus the header index."""
     reader = list(csv.reader(io.StringIO(text)))
-    issues = []
     if not reader:
-        return [], ["The sheet is empty."]
+        return [], {}
     index = map_header(reader[0])
-    missing = [LABELS[f] for f in REQUIRED if f not in index]
-    if missing:
-        return [], ["Missing column(s) in row 1: %s" % ", ".join(missing)]
-
-    def cell(r, field):
-        i = index.get(field)
-        v = r[i].strip() if i is not None and i < len(r) else ""
-        return "" if v in ("-", "–", "—") else v
-
-    body = []
+    out = []
     for n, r in enumerate(reader[1:]):
-        if not any(c.strip() and c.strip() != "-" for c in r):
+        if not any(c.strip() and c.strip() not in DASHES for c in r):
             continue
-        body.append((n + 2, r))
-    dates = _resolve_dates([cell(r, "date") for _, r in body])
+        cells = {}
+        for field, i in index.items():
+            v = r[i].strip() if i < len(r) else ""
+            cells[field] = "" if v in DASHES else v
+        out.append({"where": "%s row %d" % (tab, n + 2) if tab else "Row %d" % (n + 2), "cells": cells})
+    return out, index
+
+
+def _missing(index):
+    return [LABELS[f] for f in REQUIRED if f not in index]
+
+
+def parse_sheet(text):
+    """One tab holding stock and sales columns. Returns (rows, issues)."""
+    recs, index = _records(text)
+    if not index:
+        return [], ["The sheet is empty."]
+    if _missing(index):
+        return [], ["Missing column(s) in row 1: %s" % ", ".join(_missing(index))]
+    return _build_rows(recs)
+
+
+def _match_key(cells):
+    return tuple(re.sub(r"\s+", " ", cells.get(f, "")).lower() for f in MATCH_FIELDS)
+
+
+def parse_workbook(inventory_text, sales_text=None):
+    """Stock from the Inventory tab joined with the Sales tab. A Sales row
+    belongs to the Inventory row with the same Date of Entry, Product Type,
+    Product Category, Sizes and Seller. Returns (rows, issues)."""
+    if sales_text is None:
+        return parse_sheet(inventory_text)
+    inv, inv_index = _records(inventory_text, "Inventory")
+    if not inv_index:
+        return [], ["The Inventory tab is empty."]
+    if _missing(inv_index):
+        return [], ["Missing column(s) in row 1 of the Inventory tab: %s" % ", ".join(_missing(inv_index))]
+    sales, sales_index = _records(sales_text, "Sales")
+    issues = []
+    if not any(f in sales_index for f in ("ws_sold", "rt_sold")):
+        rows, more = _build_rows(inv)
+        return rows, ["The Sales tab has no 'Units Sold' column, so only stock is shown."] + more
+
+    pending = OrderedDict()
+    for rec in sales:
+        pending.setdefault(_match_key(rec["cells"]), []).append(rec)
+    merged = []
+    for rec in inv:
+        match = pending.get(_match_key(rec["cells"]))
+        cells = dict(rec["cells"])
+        if match:
+            sold = match.pop(0)["cells"]
+            cells.update({f: sold.get(f, "") for f in SALES_FIELDS})
+        merged.append({"where": rec["where"], "cells": cells})
+    for recs in pending.values():
+        for rec in recs:
+            label = " / ".join(x for x in (rec["cells"].get("type"), rec["cells"].get("category"), rec["cells"].get("sizes")) if x)
+            has_sales = any(rec["cells"].get(f) for f in ("ws_sold", "rt_sold"))
+            if not _missing(sales_index) and has_sales:
+                issues.append("%s (%s): no matching row in Inventory, so the Sales tab's own CP and Total Units "
+                              "were used." % (rec["where"], label))
+                merged.append(rec)
+            elif has_sales:
+                issues.append("%s (%s): no matching row in Inventory — sale not counted. Check Date of Entry, "
+                              "Product Type, Product Category, Sizes and Seller match exactly." % (rec["where"], label))
+    rows, more = _build_rows(merged)
+    return rows, issues + more
+
+
+def _build_rows(records):
+    issues = []
+    dates = _resolve_dates([rec["cells"].get("date", "") for rec in records])
     rows = []
-    for (line, r), d in zip(body, dates):
-        name = cell(r, "product_id")
+    for order, (rec, d) in enumerate(zip(records, dates)):
+        c = rec["cells"].get
+        where = rec["where"]
+        name = c("product_id", "")
         if not name:  # e.g. "Pratibha Dresses · XXL (Sachi-2)"
-            name = " · ".join(x for x in (cell(r, "type") or cell(r, "category"), cell(r, "sizes")) if x) or "Row %d" % line
-            if cell(r, "seller"):
-                name += " (%s)" % cell(r, "seller")
+            name = " · ".join(x for x in (c("type", "") or c("category", ""), c("sizes", "")) if x) or where
+            if c("seller", ""):
+                name += " (%s)" % c("seller", "")
         nums, bad = {}, False
         for f in NUMERIC:
-            v = parse_number(cell(r, f))
+            v = parse_number(c(f, ""))
             if v == "bad":
-                issues.append("Row %d (%s): %s '%s' is not a number — row skipped." % (line, name, LABELS[f], cell(r, f)))
+                issues.append("%s (%s): %s '%s' is not a number — row skipped." % (where, name, LABELS[f], c(f, "")))
                 bad = True
             elif v is not None and v < 0:
-                issues.append("Row %d (%s): %s is negative — row skipped." % (line, name, LABELS[f]))
+                issues.append("%s (%s): %s is negative — row skipped." % (where, name, LABELS[f]))
                 bad = True
             nums[f] = v or 0.0
         if bad:
             continue
         if d == "bad":
-            issues.append("Row %d (%s): Date of Entry '%s' was not understood." % (line, name, cell(r, "date")))
+            issues.append("%s (%s): Date of Entry '%s' was not understood." % (where, name, c("date", "")))
             d = None
         if nums["ws_sold"] and not nums["ws_price"]:
-            issues.append("Row %d (%s): %g units sold wholesale but SP is empty." % (line, name, nums["ws_sold"]))
+            issues.append("%s (%s): %g units sold wholesale but SP is empty." % (where, name, nums["ws_sold"]))
         if nums["rt_sold"] and not nums["rt_price"]:
-            issues.append("Row %d (%s): %g units sold retail but Retail SP is empty." % (line, name, nums["rt_sold"]))
+            issues.append("%s (%s): %g units sold retail but Retail SP is empty." % (where, name, nums["rt_sold"]))
         if nums["ws_sold"] + nums["rt_sold"] > nums["total_units"]:
-            issues.append("Row %d (%s): %g units sold is more than Total Units (%g)." % (
-                line, name, nums["ws_sold"] + nums["rt_sold"], nums["total_units"]))
+            issues.append("%s (%s): %g units sold is more than Total Units (%g)." % (
+                where, name, nums["ws_sold"] + nums["rt_sold"], nums["total_units"]))
         row = {
-            "row": line, "date": d, "name": name, "product_id": cell(r, "product_id"),
-            "category": cell(r, "category") or "Uncategorised", "type": cell(r, "type") or "—",
-            "sizes": cell(r, "sizes"), "seller": cell(r, "seller") or "Unknown",
+            "row": order, "where": where, "date": d, "name": name, "product_id": c("product_id", ""),
+            "category": c("category", "") or "Uncategorised", "type": c("type", "") or "—",
+            "sizes": c("sizes", ""), "seller": c("seller", "") or "Unknown",
         }
         row.update(nums)
         _compute(row)
